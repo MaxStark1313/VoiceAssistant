@@ -3,12 +3,14 @@ import speech_recognition as sr
 import ctypes
 import io
 import os
+import pystray
 import re
 import sys
 import subprocess
 import threading
 import time
 from pywinauto import Application, Desktop
+from PIL import Image, ImageDraw
 
 # Настройка кодировки вывода для Python
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -139,6 +141,20 @@ def update_text():
 
     root.after(10, update_text)  # Обновлять каждые 1 секунд
 
+# Функция для создания иконки в системном трее
+def create_tray_icon():
+    # Загрузка изображения для иконки трея
+    icon_image = Image.open(os.path.join("items", "icon_tray.png"))
+
+    # Определяем действия для иконки трея
+    def on_quit(icon, item):
+        icon.stop()
+
+    # Создаем иконку
+    icon = pystray.Icon("name", icon_image, "Voice Assistant")
+    icon.menu = pystray.Menu(pystray.MenuItem("Quit", on_quit))
+    icon.run()
+
 # Создание графического окна с tkinter
 root = tk.Tk()
 root.attributes('-transparentcolor', 'white')  # Установка прозрачного цвета
@@ -174,8 +190,14 @@ thread.start()
 # Запускаем проверку молчания
 root.after(5000, check_silence)  # Начать проверку через 5 секунд
 
+# Запуск иконки в системном трее
+tray_thread = threading.Thread(target=create_tray_icon)
+tray_thread.daemon = True
+tray_thread.start()
+
 # Запуск графического интерфейса
 root.mainloop()
+
 
 # # Подключение к уже запущенному Notepad
 # app = Application().connect(title_re=".*Notepad")
