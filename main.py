@@ -18,13 +18,13 @@ current_directory = os.getcwd()
 
 # Список программ и соответствующие команды для их запуска
 programs = {
-    #Programs
     ##Cmd
     "командную строку от имени администратора": os.path.join(current_directory, 'VBS_files', 'run_admin_cmd.vbs'),
     "сmd а ты меня администратора": os.path.join(current_directory, 'VBS_files', 'run_admin_cmd.vbs'),
     "сmd от имени администратора": os.path.join(current_directory, 'VBS_files', 'run_admin_cmd.vbs'),
     "cmd администратор": os.path.join(current_directory, 'VBS_files', 'run_admin_cmd.vbs'),
     "cmd administrator": os.path.join(current_directory, 'VBS_files', 'run_admin_cmd.vbs'),
+    ##Another programs
     "калькулятор": r"C:\Windows\System32\calc.exe",
     "блокнот": r"C:\Windows\System32\notepad.exe",
     "discord": r"C:\Users\Acer\AppData\Local\Discord\app-1.0.9156\Discord.exe",
