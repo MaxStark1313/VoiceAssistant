@@ -43,6 +43,8 @@ def send_message(tab, message):
     }})();
     """
     tab.call_method("Runtime.evaluate", expression=script)
+    # Добавляем задержку в 1 секунду перед получением ответа
+    time.sleep(1)
 
 def wait_for_response(tab):
     while True:
@@ -78,9 +80,6 @@ def main():
     # Создаем клиент для подключения к браузеру
     browser = pychrome.Browser(url="http://localhost:9222")
 
-    # Подождите немного, чтобы все вкладки успели загрузиться
-    #time.sleep(5)
-
     # Попробуйте найти вкладку ChatGPT
     chatgpt_tab = find_chatgpt_tab(browser)
     if chatgpt_tab is None:
@@ -90,10 +89,13 @@ def main():
         print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
 
     # Пример отправки запроса и получения ответа
-    send_message(chatgpt_tab, "Расскажи детальнее что такое компаратор")
+    send_message(chatgpt_tab, "Расскажи Какой спецификатор формата используется для вывода длинного числа")
 
     # Ожидание, чтобы ChatGPT успел ответить
-    time.sleep(10)
+    # time.sleep(10)
+
+    # Ожидание, чтобы ChatGPT успел ответить
+    wait_for_response(chatgpt_tab)
 
     response = get_last_message(chatgpt_tab)
     print(f"Ответ от ChatGPT: {response}")
