@@ -1,16 +1,29 @@
+import pyautogui
 import pychrome
 import time
+
+def activate_chrome_window(window_title):
+    # Находим окно Chrome по заголовку
+    # Важно: для этого нужен заголовок окна, который должен быть уникальным
+    window = pyautogui.getWindowsWithTitle(window_title)
+    
+    if window:
+        # Активируем окно
+        window[0].activate()
+        time.sleep(1)
 
 def get_tab_url(tab):
     # Выполняем JavaScript для получения текущего URL
     result = tab.call_method("Runtime.evaluate", expression="window.location.href")
     return result.get('result', {}).get('value', '')
 
+def activate_tab(tab):
+    tab.call_method("Page.bringToFront")
+
 def find_chatgpt_tab(browser):
     tabs = browser.list_tab()
     for tab in tabs:
         tab.start()  # Запускаем вкладку, чтобы она была готова для методов
-        #time.sleep(1)  # Небольшая задержка
         try:
             url = get_tab_url(tab)
             if "chatgpt.com" in url:
@@ -80,6 +93,8 @@ def main():
     # Создаем клиент для подключения к браузеру
     browser = pychrome.Browser(url="http://localhost:9222")
 
+    # Замените "ChatGPT" на уникальный заголовок вашего окна Chrome
+    activate_chrome_window("Широтно-импульсная модуляция - Google Chrome")
     # Попробуйте найти вкладку ChatGPT
     chatgpt_tab = find_chatgpt_tab(browser)
     if chatgpt_tab is None:
@@ -88,11 +103,11 @@ def main():
     else:
         print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
 
-    # Пример отправки запроса и получения ответа
-    send_message(chatgpt_tab, "Расскажи Какой спецификатор формата используется для вывода длинного числа")
+    # Активируем вкладку
+    activate_tab(chatgpt_tab)
 
-    # Ожидание, чтобы ChatGPT успел ответить
-    # time.sleep(10)
+    # Пример отправки запроса и получения ответа
+    send_message(chatgpt_tab, "Что такое тип данных Void в языке C")
 
     # Ожидание, чтобы ChatGPT успел ответить
     wait_for_response(chatgpt_tab)
