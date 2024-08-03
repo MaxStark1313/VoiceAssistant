@@ -2,7 +2,6 @@ import tkinter as tk
 import speech_recognition as sr
 import ctypes
 import io
-import openai
 import os
 import pystray
 import re
