@@ -1,10 +1,10 @@
 import pychrome
 import keyboard
 import os
-import re
 import pyautogui
+import re
+import shutil
 import subprocess
-import threading
 import time
 from datetime import datetime
 import win32com.client
@@ -19,7 +19,7 @@ def activate_chrome_window(window_title):
         # Активируем окно
         window[0].maximize()
         window[0].activate()
-        time.sleep(1)
+        time.sleep(0)
 
 def get_tab_url(tab):
     # Выполняем JavaScript для получения текущего URL
@@ -65,22 +65,6 @@ def send_message(tab, message):
     }})();
     """
     tab.call_method("Runtime.evaluate", expression=script)
-    # Добавляем задержку в 1 секунду перед получением ответа
-    time.sleep(1)
-
-def wait_for_response1(tab):
-    while True:
-        script = """
-        (function() {
-            var stopButton = document.querySelector('[data-testid="stop-button"]');
-            return stopButton === null;
-        })();
-        """
-        result = tab.call_method("Runtime.evaluate", expression=script)
-        if result.get('result', {}).get('value', False):
-            break
-        time.sleep(1)
-
     # Добавляем задержку в 1 секунду перед получением ответа
     time.sleep(1)
 
@@ -217,7 +201,17 @@ def process_code_files(code_file_paths):
         "csharp": ".cs",
         "cpp": ".cpp",
         "c": ".c",
-        "java": ".java"
+        "java": ".java",
+        "javascript": ".js",
+        "ruby": ".rb",
+        "php": ".php",
+        "go": ".go",
+        "swift": ".swift",
+        "kotlin": ".kt",
+        "rust": ".rs",
+        "perl": ".pl",
+        "r": ".R",
+        "scala": ".scala"
     }
     
     processed_files = []
@@ -305,8 +299,199 @@ def unblock_input():
     
     enable_mouse()
 
+def clear_directory(dir):
+    for filename in os.listdir(dir):
+        file_path = os.path.join(dir, filename)
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"Ошибка при удалении {file_path}: {e}")
+
+def replace_file_content(file_path, content):
+    temp_file_path = file_path + ".tmp"
+    # Записываем данные в временный файл
+    with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
+        temp_file.write(content)
+    
+    # Переименовываем временный файл в исходный файл
+    os.replace(temp_file_path, file_path)
+
+def check_and_handle_files_old(dir):
+    tmp_dir = r"D:\Program_Data\Python\voice_tmp"
+
+    # Создаем директорию для сохранения файлов, если ее еще нет
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+    tmp_voice_code_decision = os.path.join(tmp_dir, "tmp_voice_code_decision.txt")
+    tmp_voice_code_answer = os.path.join(tmp_dir, "tmp_voice_code_answer.txt")
+
+    # Проверка наличия файлов в папке output_files
+    files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
+    if files:
+        with open(tmp_voice_code_decision, 'w', encoding='utf-8') as decision_file:
+            decision_file.write("В папке присутствуют сторонние файлы. Мне их удалить, перенести куда-то или показать?")
+            print(f"Ожидается принятие решения с файлами в папке {dir}")
+
+        while True:
+            if os.path.exists(tmp_voice_code_answer):
+                with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
+                    answer = answer_file.read().strip()
+                
+                if answer == "Del":
+                    for file in files:
+                        os.remove(os.path.join(dir, file))
+                    print(f"Файлы в папке {dir} были успешно удалены")
+                    break
+                
+                elif answer.startswith("Move to: "):
+                    target_dir = answer.split(": ")[1].strip()
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir)
+                    for file in files:
+                        src = os.path.join(dir, file)
+                        dest = os.path.join(target_dir, file)
+                        shutil.move(src, dest)
+                        # Проверка существования файла в новой директории
+                        if not os.path.exists(dest):
+                            print(f"Не удалось перенести файл: {file}")
+                        else:
+                            print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
+                    break
+                
+                elif answer == "Show":
+                    # Открыть все файлы в папке output_files
+                    files_to_open = [os.path.join(dir, file) for file in files]
+                    subprocess.run(["code"] + files_to_open, check=True)
+                    print("Visual Studio Code открыта, ожидание дальнейших указаний...")
+                    
+                    while True:
+                        if os.path.exists(tmp_voice_code_answer):
+                            with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
+                                answer = answer_file.read().strip()
+                            
+                            if answer in ["Del", "Move to:"]:
+                                if answer == "Del":
+                                    for file in files:
+                                        os.remove(os.path.join(dir, file))
+                                    print(f"Файлы в папке {dir} были успешно удалены")
+                                elif answer.startswith("Move to:"):
+                                    target_dir = answer.split(":")[1].strip()
+                                    if not os.path.exists(target_dir):
+                                        os.makedirs(target_dir)
+                                    for file in files:
+                                        src = os.path.join(dir, file)
+                                        dest = os.path.join(target_dir, file)
+                                        shutil.move(src, dest)
+                                        if not os.path.exists(dest):
+                                            print(f"Не удалось перенести файл: {file}")
+                                        else:
+                                            print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
+                                break
+                            elif answer == "Show":
+                                # Очистить файл и заново открыть VS Code
+                                open(tmp_voice_code_answer, 'w').close()
+                                files_to_open = [os.path.join(dir, file) for file in files]
+                                subprocess.run(["code"] + files_to_open, check=True)
+                                print("Visual Studio Code открыта, ожидание дальнейших указаний...")
+                                continue
+
+                        time.sleep(0.5)
+                    
+                    # Перезаписать файл tmp_voice_code_decision
+                    with open(tmp_voice_code_decision, 'w', encoding='utf-8') as decision_file:
+                        decision_file.write("Что мне делать со сторонними файлами?")
+                    print(f"Ожидается принятие решения с файлами в папке {dir}")
+    else:
+        print(f"В папке {dir} нет файлов для обработки")
+
+def check_and_handle_files(dir):
+    tmp_dir = r"D:\Program_Data\Python\voice_tmp"
+    tmp_voice_code_decision = os.path.join(tmp_dir, "tmp_voice_code_decision.txt")
+    tmp_voice_code_answer = os.path.join(tmp_dir, "tmp_voice_code_answer.txt")
+    
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+    
+    files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
+    
+    if files:
+        with open(tmp_voice_code_decision, 'w', encoding='utf-8') as decision_file:
+            decision_file.write("В папке присутствуют сторонние файлы. Мне их удалить, перенести куда-то или показать?")
+            print(f"Ожидается принятие решения с файлами в папке {dir}")
+        
+        while True:
+            if os.path.exists(tmp_voice_code_answer):
+                with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
+                    answer = answer_file.read().strip()
+                
+                if answer == "Del":
+                    for file in files:
+                        os.remove(os.path.join(dir, file))
+                    print(f"Файлы в папке {dir} были успешно удалены")
+                    break
+                
+                elif answer.startswith("Move to:"):
+                    target_dir = answer.split(":")[1].strip()
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir)
+                    for file in files:
+                        src = os.path.join(dir, file)
+                        dest = os.path.join(target_dir, file)
+                        shutil.move(src, dest)
+                        if not os.path.exists(dest):
+                            print(f"Не удалось перенести файл: {file}")
+                        else:
+                            print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
+                    break
+                
+                elif answer == "Show":
+                    files_to_open = [os.path.join(dir, file) for file in files]
+                    subprocess.run(["code"] + files_to_open, check=True)
+                    print("Visual Studio Code открыта, ожидание дальнейших указаний...")
+                    
+                    # Ожидание закрытия VS Code или обновления файла tmp_voice_code_answer.txt
+                    while True:
+                        time.sleep(2)
+                        if os.path.exists(tmp_voice_code_answer):
+                            with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
+                                new_answer = answer_file.read().strip()
+                            
+                            if new_answer == "Del":
+                                os.remove(tmp_voice_code_answer)
+                                for file in files:
+                                    os.remove(os.path.join(dir, file))
+                                print(f"Файлы в папке {dir} были успешно удалены")
+                                break
+                            
+                            elif new_answer.startswith("Move to: "):
+                                os.remove(tmp_voice_code_answer)
+                                target_dir = new_answer.split(": ")[1].strip()
+                                if not os.path.exists(target_dir):
+                                    os.makedirs(target_dir)
+                                for file in files:
+                                    src = os.path.join(dir, file)
+                                    dest = os.path.join(target_dir, file)
+                                    shutil.move(src, dest)
+                                    if not os.path.exists(dest):
+                                        print(f"Не удалось перенести файл: {file}")
+                                    else:
+                                        print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
+                                break
+                            
+                    
+                    break
+            
+            time.sleep(1)
+#                           elif new_answer == "Show":
+#                               os.remove(tmp_voice_code_answer)
+#                               # Повторное открытие VS Code
+#                               subprocess.run(["code", dir], check=True)
+#                               print("Visual Studio Code открыта, ожидание дальнейших указаний...")
 
 def main():
+    prompt = "Добавь в программу на языке java функцию вычисления тангенса"
+    tmp_dir = r"D:\Program_Data\Python\tmp"
+    output_dir = r"D:\Program_Data\Python\output_files"
     browser = pychrome.Browser(url="http://localhost:9222")    # Создаем клиент для подключения к браузеру
     activate_chrome_window("Google Chrome")                    # Замените "Google Chrome" на уникальный заголовок вашего окна
     block_input()                                              # Блокируем ввод
@@ -322,22 +507,27 @@ def main():
             print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
 
         activate_tab(chatgpt_tab)                              # Активируем вкладку
-        send_message(chatgpt_tab, "Теперь добавь в каждую из этих программ функции расчёта всех тригонометрических функций") # Пример отправки запроса и получения ответа
+        send_message(chatgpt_tab, prompt) # Пример отправки запроса и получения ответа
 
         # Ожидание получения ответа
         wait_for_response(chatgpt_tab)
         html_content = get_last_message_html(chatgpt_tab)
-        codes, text = extract_code_blocks(html_content)
-
-        text_file_path, code_file_paths = save_to_file([text], codes)
-        new_file_path = replace_code_in_text(text_file_path, code_file_paths)
-        processed_code_files = process_code_files(code_file_paths)
-
-        print(f"Обновленный текст сохранен в: {new_file_path}")
-        print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
 
     finally:
         unblock_input()
+
+    codes, text = extract_code_blocks(html_content)
+    text_file_path, code_file_paths = save_to_file([text], codes)
+    check_and_handle_files(output_dir)
+    new_file_path = replace_code_in_text(text_file_path, code_file_paths)
+    processed_code_files = process_code_files(code_file_paths)
+
+    print(f"Обновленный текст сохранен в: {new_file_path}")
+    print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
+
+    clear_directory(tmp_dir)
+    print(f"Папка {tmp_dir} успешно очищена")
+
         
 
 if __name__ == "__main__":
