@@ -42,6 +42,7 @@ programs = {
     "vs code": os.path.join(current_directory, 'VBS_files', 'VSCode.vbs'),
     "Vs Cold": os.path.join(current_directory, 'VBS_files', 'VSCode.vbs'),
     "Rescold": os.path.join(current_directory, 'VBS_files', 'VSCode.vbs')
+    #"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
     #Folders
 }
 

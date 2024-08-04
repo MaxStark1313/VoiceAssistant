@@ -68,7 +68,7 @@ def send_message(tab, message):
     # Добавляем задержку в 1 секунду перед получением ответа
     time.sleep(1)
 
-def wait_for_response(tab):
+def wait_for_response1(tab):
     while True:
         script = """
         (function() {
@@ -83,6 +83,52 @@ def wait_for_response(tab):
 
     # Добавляем задержку в 1 секунду перед получением ответа
     time.sleep(1)
+
+def wait_for_response(tab):
+    while True:
+        # Проверяем наличие кнопки stop-button
+        stop_button_script = """
+        (function() {
+            var stopButton = document.querySelector('[data-testid="stop-button"]');
+            return stopButton === null;
+        })();
+        """
+        stop_button_result = tab.call_method("Runtime.evaluate", expression=stop_button_script)
+        stop_button_not_found = stop_button_result.get('result', {}).get('value', False)
+        
+        if stop_button_not_found:
+            # Если кнопка stop-button не найдена, проверяем наличие кнопки "Продолжить создание"
+            continue_creation_button_script = """
+            (function() {
+                var continueButton = document.querySelector('button.btn.btn-secondary');
+                return continueButton === null;
+            })();
+            """
+            continue_creation_result = tab.call_method("Runtime.evaluate", expression=continue_creation_button_script)
+            continue_creation_button_not_found = continue_creation_result.get('result', {}).get('value', False)
+            
+            if not continue_creation_button_not_found:
+                # Кнопка "Продолжить создание" найдена, нажимаем её
+                click_continue_button_script = """
+                (function() {
+                    var continueButton = document.querySelector('button.btn.btn-secondary');
+                    if (continueButton) {
+                        continueButton.click();
+                        return true;
+                    }
+                    return false;
+                })();
+                """
+                tab.call_method("Runtime.evaluate", expression=click_continue_button_script)
+                
+                # Ждем 1 секунду после клика на кнопку
+                time.sleep(1)
+            else:
+                # Обе кнопки не найдены, считаем работу завершенной
+                break
+        else:
+            # Кнопка stop-button еще есть, ждем 1 секунду
+            time.sleep(1)
 
 def get_last_message_html(tab):
     # Выполняем JavaScript для получения текста последнего сообщения
@@ -276,7 +322,7 @@ def main():
             print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
 
         activate_tab(chatgpt_tab)                              # Активируем вкладку
-        send_message(chatgpt_tab, "Напиши мне эту программу на разных языках си си шарп си плюс плюс, Пайтон, Java") # Пример отправки запроса и получения ответа
+        send_message(chatgpt_tab, "Теперь добавь в каждую из этих программ функции расчёта всех тригонометрических функций") # Пример отправки запроса и получения ответа
 
         # Ожидание получения ответа
         wait_for_response(chatgpt_tab)
