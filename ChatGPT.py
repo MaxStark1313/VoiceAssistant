@@ -138,35 +138,6 @@ def save_to_file(texts, codes, max_files=10):
     
     return text_filename, [os.path.join(output_dir, f"code_{current_time}_{i}.code") for i in range(1, len(codes) + 1)]
 
-def replace_code_in_text_old(text_file_path, code_file_paths):
-
-    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_dir = r"D:\Program_Data\Python\output_files"
-
-    # Создаем директорию для сохранения файлов, если ее еще нет
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # Читаем содержимое файлов
-    with open(text_file_path, 'r', encoding='utf-8') as text_file:
-        text_content = text_file.read()
-    
-    for code_file_path in code_file_paths:
-        with open(code_file_path, 'r', encoding='utf-8') as code_file:
-            code_content = code_file.read()
-    
-        code_pattern = re.escape(code_content)
-        updated_text = re.sub(code_pattern, f'Код программы находится по пути "{code_file_path}".', text_content, flags=re.DOTALL)
-        text_content = updated_text
-    
-    new_filename = f"out_text_{current_time}.txt"
-    new_file_path = os.path.join(output_dir, new_filename)
-    
-    with open(new_file_path, 'w', encoding='utf-8') as output_file:
-        output_file.write(text_content)
-    
-    return new_file_path
-
 def replace_code_in_text(text_file_path, code_file_paths):
     # Чтение содержимого исходного текстового файла
     with open(text_file_path, 'r', encoding='utf-8') as text_file:
@@ -178,7 +149,7 @@ def replace_code_in_text(text_file_path, code_file_paths):
             code_content = code_file.read()
         
         # Замена всех вхождений текста из code_file_path в text_content
-        replacement_text = f'Код программы находится по пути "{code_file_path}".'
+        replacement_text = f'\nКод программы находится по пути "{code_file_path}".\n'
         text_content = text_content.replace(code_content, replacement_text)
     
     # Генерация пути для нового файла
@@ -194,7 +165,48 @@ def replace_code_in_text(text_file_path, code_file_paths):
     
     return new_file_path
 
-# Пример функции get_next_file_number
+def process_code_files(code_file_paths):
+    extensions = {
+        "python": ".py",
+        "csharp": ".cs",
+        "cpp": ".cpp",
+        "c": ".c",
+        "java": ".java"
+    }
+    
+    processed_files = []
+    for code_file_path in code_file_paths:
+        with open(code_file_path, 'r', encoding='utf-8') as code_file:
+            lines = code_file.readlines()
+        
+        # Извлечение первой строки для определения языка программирования и удаления лишнего текста
+        first_line = lines[0]
+        code_language = None
+        for lang, ext in extensions.items():
+            if first_line.lower().startswith(lang):
+                code_language = lang
+                extension = ext
+                break
+
+        if code_language:
+            # Убираем название языка и "Копировать код"
+            first_line = re.sub(rf"{code_language}Копировать код", "", first_line, flags=re.IGNORECASE).strip()
+            
+            # Записываем обработанные строки в новый файл
+            output_dir = r"D:\Program_Data\Python\output_files"
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            new_code_filename = f"{os.path.basename(code_file_path).replace('.code', extension)}"  # Заменяем .code на соответствующее расширение
+            new_code_filepath = os.path.join(output_dir, new_code_filename)
+            processed_files.append(new_code_filepath)
+            
+            with open(new_code_filepath, 'w', encoding='utf-8') as new_code_file:
+                new_code_file.write(first_line + "\n")
+                new_code_file.writelines(lines[1:])  # Остальные строки записываем как есть
+
+    return processed_files
+
 def get_next_file_number(output_dir, prefix='out_text_', extension='.txt'):
     pattern = re.compile(rf'{re.escape(prefix)}\d+_{re.escape(extension)}$', re.IGNORECASE)
     files = [f for f in os.listdir(output_dir) if pattern.match(f)]
@@ -264,7 +276,7 @@ def main():
             print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
 
         activate_tab(chatgpt_tab)                              # Активируем вкладку
-        send_message(chatgpt_tab, "Напиши функцию вычисления Арктангенса На языке Python") # Пример отправки запроса и получения ответа
+        send_message(chatgpt_tab, "Напиши мне эту программу на разных языках си си шарп си плюс плюс, Пайтон, Java") # Пример отправки запроса и получения ответа
 
         # Ожидание получения ответа
         wait_for_response(chatgpt_tab)
@@ -273,8 +285,10 @@ def main():
 
         text_file_path, code_file_paths = save_to_file([text], codes)
         new_file_path = replace_code_in_text(text_file_path, code_file_paths)
+        processed_code_files = process_code_files(code_file_paths)
 
         print(f"Обновленный текст сохранен в: {new_file_path}")
+        print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
 
     finally:
         unblock_input()
