@@ -1,14 +1,20 @@
-import pychrome
 import keyboard
 import os
 import pyautogui
+import pychrome
+import pystray
 import re
 import shutil
+import speech_recognition as sr
 import subprocess
 import time
-from datetime import datetime
+import tkinter as tk
 import win32com.client
 from bs4 import BeautifulSoup
+from datetime import datetime
+from PIL import Image
+from pystray import MenuItem as item
+
 
 def activate_chrome_window(window_title):
     # Находим окно Chrome по заголовку
@@ -168,18 +174,18 @@ def save_to_file(texts, codes, max_files=10):
     
     return text_filename, [os.path.join(output_dir, f"code_{current_time}_{i}.code") for i in range(1, len(codes) + 1)]
 
-def replace_code_in_text(text_file_path, code_file_paths):
+def replace_code_in_text(text_file_path, code_file_paths, processed_code_files):
     # Чтение содержимого исходного текстового файла
     with open(text_file_path, 'r', encoding='utf-8') as text_file:
         text_content = text_file.read()
 
     # Обработка каждого файла с кодом
-    for code_file_path in code_file_paths:
+    for code_file_path, processed_file_path in zip(code_file_paths, processed_code_files):
         with open(code_file_path, 'r', encoding='utf-8') as code_file:
             code_content = code_file.read()
         
         # Замена всех вхождений текста из code_file_path в text_content
-        replacement_text = f'\nКод программы находится по пути "{code_file_path}".\n'
+        replacement_text = f'\nКод программы находится по пути "{processed_file_path}".\n'
         text_content = text_content.replace(code_content, replacement_text)
     
     # Генерация пути для нового файла
@@ -316,94 +322,6 @@ def replace_file_content(file_path, content):
     # Переименовываем временный файл в исходный файл
     os.replace(temp_file_path, file_path)
 
-def check_and_handle_files_old(dir):
-    tmp_dir = r"D:\Program_Data\Python\voice_tmp"
-
-    # Создаем директорию для сохранения файлов, если ее еще нет
-    if not os.path.exists(tmp_dir):
-        os.makedirs(tmp_dir)
-    tmp_voice_code_decision = os.path.join(tmp_dir, "tmp_voice_code_decision.txt")
-    tmp_voice_code_answer = os.path.join(tmp_dir, "tmp_voice_code_answer.txt")
-
-    # Проверка наличия файлов в папке output_files
-    files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
-    if files:
-        with open(tmp_voice_code_decision, 'w', encoding='utf-8') as decision_file:
-            decision_file.write("В папке присутствуют сторонние файлы. Мне их удалить, перенести куда-то или показать?")
-            print(f"Ожидается принятие решения с файлами в папке {dir}")
-
-        while True:
-            if os.path.exists(tmp_voice_code_answer):
-                with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
-                    answer = answer_file.read().strip()
-                
-                if answer == "Del":
-                    for file in files:
-                        os.remove(os.path.join(dir, file))
-                    print(f"Файлы в папке {dir} были успешно удалены")
-                    break
-                
-                elif answer.startswith("Move to: "):
-                    target_dir = answer.split(": ")[1].strip()
-                    if not os.path.exists(target_dir):
-                        os.makedirs(target_dir)
-                    for file in files:
-                        src = os.path.join(dir, file)
-                        dest = os.path.join(target_dir, file)
-                        shutil.move(src, dest)
-                        # Проверка существования файла в новой директории
-                        if not os.path.exists(dest):
-                            print(f"Не удалось перенести файл: {file}")
-                        else:
-                            print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
-                    break
-                
-                elif answer == "Show":
-                    # Открыть все файлы в папке output_files
-                    files_to_open = [os.path.join(dir, file) for file in files]
-                    subprocess.run(["code"] + files_to_open, check=True)
-                    print("Visual Studio Code открыта, ожидание дальнейших указаний...")
-                    
-                    while True:
-                        if os.path.exists(tmp_voice_code_answer):
-                            with open(tmp_voice_code_answer, 'r', encoding='utf-8') as answer_file:
-                                answer = answer_file.read().strip()
-                            
-                            if answer in ["Del", "Move to:"]:
-                                if answer == "Del":
-                                    for file in files:
-                                        os.remove(os.path.join(dir, file))
-                                    print(f"Файлы в папке {dir} были успешно удалены")
-                                elif answer.startswith("Move to:"):
-                                    target_dir = answer.split(":")[1].strip()
-                                    if not os.path.exists(target_dir):
-                                        os.makedirs(target_dir)
-                                    for file in files:
-                                        src = os.path.join(dir, file)
-                                        dest = os.path.join(target_dir, file)
-                                        shutil.move(src, dest)
-                                        if not os.path.exists(dest):
-                                            print(f"Не удалось перенести файл: {file}")
-                                        else:
-                                            print(f"Файл {file} из папки {dir} был успешно перенесён в папку {target_dir}")
-                                break
-                            elif answer == "Show":
-                                # Очистить файл и заново открыть VS Code
-                                open(tmp_voice_code_answer, 'w').close()
-                                files_to_open = [os.path.join(dir, file) for file in files]
-                                subprocess.run(["code"] + files_to_open, check=True)
-                                print("Visual Studio Code открыта, ожидание дальнейших указаний...")
-                                continue
-
-                        time.sleep(0.5)
-                    
-                    # Перезаписать файл tmp_voice_code_decision
-                    with open(tmp_voice_code_decision, 'w', encoding='utf-8') as decision_file:
-                        decision_file.write("Что мне делать со сторонними файлами?")
-                    print(f"Ожидается принятие решения с файлами в папке {dir}")
-    else:
-        print(f"В папке {dir} нет файлов для обработки")
-
 def check_and_handle_files(dir):
     tmp_dir = r"D:\Program_Data\Python\voice_tmp"
     tmp_voice_code_decision = os.path.join(tmp_dir, "tmp_voice_code_decision.txt")
@@ -430,8 +348,8 @@ def check_and_handle_files(dir):
                     print(f"Файлы в папке {dir} были успешно удалены")
                     break
                 
-                elif answer.startswith("Move to:"):
-                    target_dir = answer.split(":")[1].strip()
+                elif answer.startswith("Move to: "):
+                    target_dir = answer.split(": ")[1].strip()
                     if not os.path.exists(target_dir):
                         os.makedirs(target_dir)
                     for file in files:
@@ -482,16 +400,16 @@ def check_and_handle_files(dir):
                     break
             
             time.sleep(1)
-#                           elif new_answer == "Show":
-#                               os.remove(tmp_voice_code_answer)
-#                               # Повторное открытие VS Code
-#                               subprocess.run(["code", dir], check=True)
-#                               print("Visual Studio Code открыта, ожидание дальнейших указаний...")
 
-def main():
-    prompt = "Добавь в программу на языке java функцию вычисления тангенса"
-    tmp_dir = r"D:\Program_Data\Python\tmp"
-    output_dir = r"D:\Program_Data\Python\output_files"
+def read_prompt_from_file(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return file.read().strip()
+
+def ChatGPT_prompt(prompt, dir_tmp, dir_output):
+    file_path_prompt = r"D:\Program_Data\Python\prompt.txt"
+    prompt = read_prompt_from_file(file_path_prompt)
+    dir_tmp = r"D:\Program_Data\Python\tmp"
+    dir_output = r"D:\Program_Data\Python\output_files"
     browser = pychrome.Browser(url="http://localhost:9222")    # Создаем клиент для подключения к браузеру
     activate_chrome_window("Google Chrome")                    # Замените "Google Chrome" на уникальный заголовок вашего окна
     block_input()                                              # Блокируем ввод
@@ -518,17 +436,130 @@ def main():
 
     codes, text = extract_code_blocks(html_content)
     text_file_path, code_file_paths = save_to_file([text], codes)
-    check_and_handle_files(output_dir)
-    new_file_path = replace_code_in_text(text_file_path, code_file_paths)
+    check_and_handle_files(dir_output)
     processed_code_files = process_code_files(code_file_paths)
+    new_file_path = replace_code_in_text(text_file_path, code_file_paths, processed_code_files)
 
     print(f"Обновленный текст сохранен в: {new_file_path}")
     print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
 
-    clear_directory(tmp_dir)
-    print(f"Папка {tmp_dir} успешно очищена")
+    clear_directory(dir_tmp)
+    print(f"Папка {dir_tmp} успешно очищена")
 
-        
+# Функция для запуска программы
+def run_program(command):
+    try:
+        if command.endswith('.vbs'):
+            # Используем cscript для запуска VBS файлов
+            subprocess.Popen(['cscript', command])
+        else:
+            subprocess.Popen(command)
+    except Exception as e:
+        print(f"Ошибка запуска программы: {e}")
 
-if __name__ == "__main__":
-    main()
+# Функция для открытия программ
+def execute_command(command, programs, text_var):
+    words = command.lower().split()
+    keywords = ["открыть", "запустить", "открой", "запусти", "открытие", "запуск",
+                "open", "start", "launch", "run"]
+    
+    programs_to_run = []
+
+    # Ищем ключевые слова и названия программ
+    for word in words:
+        if any(keyword in word for keyword in keywords):
+            for program in programs:
+                if program.lower() in command.lower():
+                    programs_to_run.append(programs[program])
+
+    # Запускаем все найденные программы
+    for program in programs_to_run:
+        run_program(program)
+        text_var.set(f"Запуск: {', '.join([k for k, v in programs.items() if v in programs_to_run])}")
+
+# Функция для распознавания речи
+def recognize_speech(recognizer, microphone, text_var, execute_command, programs, update_last_speech_time):
+    while True:
+        try:
+            with microphone as source:
+                recognizer.adjust_for_ambient_noise(source)
+                audio = recognizer.listen(source, timeout=5)
+                text = recognizer.recognize_google(audio, language="ru-RU")
+                print(f"Распознанный текст: {text}")
+                
+                # Обновление времени последней речи
+                update_last_speech_time()
+                
+                # Обновление текста
+                text_var.set(text)
+                
+                # Выполнение команды
+                execute_command(text.strip(), programs, text_var)
+
+        except sr.UnknownValueError:
+            pass  # Ожидание следующего слова
+        except sr.RequestError as e:
+            print(f"Ошибка запроса к сервису Google Speech Recognition: {e}")
+        except sr.WaitTimeoutError:
+            pass # Таймаут при ожидании начала речи
+
+# Функция для проверки молчания и очистки текста
+def check_silence(root, text_var, last_speech_time, timeout_duration):
+    current_time = time.time()
+    if current_time - last_speech_time > timeout_duration:
+        # Если прошло больше времени, чем таймаут, очищаем текст
+        text_var.set("")
+    root.after(4000, check_silence, root, text_var, last_speech_time, timeout_duration)  # Проверять каждые 4 секунды
+
+# Функция для создания иконки в системном трее
+def create_tray_icon():
+    # Загрузка изображения для иконки трея
+    icon_image = Image.open(os.path.join("items", "icon_tray.png"))
+
+    # Определяем действия для иконки трея
+    def on_quit(icon, item):
+        icon.stop()
+
+    # Создаем иконку
+    icon = pystray.Icon("name", icon_image, "Voice Assistant")
+    icon.menu = pystray.Menu(pystray.MenuItem("Quit", on_quit))
+    icon.run()
+
+# Функция для инициализации графического интерфейса
+def init_gui(root, text_var):
+    root.attributes('-transparentcolor', 'white')  # Установка прозрачного цвета
+    root.attributes('-topmost', True)  # Держит окно поверх всех других
+    root.overrideredirect(True)  # Удаляет заголовок окна
+
+    # Установка начальных размеров окна и цвета фона
+    root.geometry("400x100")
+    root.configure(bg='white')  # Цвет фона, который будет прозрачным
+
+    # Создание метки для отображения текста
+    label = tk.Label(root, textvariable=text_var, font=("Verdana", 8))
+    label.pack(padx=10, pady=10)
+
+    return label
+
+# Функция для обновления текста в графическом окне
+def update_text(root, label, text_var):
+    # Обновляем размер окна в зависимости от размера текста
+    label.update_idletasks()
+    new_width = label.winfo_reqwidth() + 20  # Добавляем отступы
+    new_height = label.winfo_reqheight() + 20  # Добавляем отступы
+    root.geometry(f"{new_width}x{new_height}+{root.winfo_screenwidth() - new_width}+{root.winfo_screenheight() - new_height}")
+
+# Функция для записи текста в файл
+def write_prompt_to_file(text):
+    with open('prompt.txt', 'w', encoding='utf-8') as file:
+        file.write(text)
+
+# Функция для обработки нажатия клавиши Control
+def handle_control_key(prompt, text_var, dir_tmp, dir_output):
+    if keyboard.is_pressed('ctrl'):
+        # Запись текста в prompt.txt
+        write_prompt_to_file(prompt)
+        # Запрос к ChatGPT
+        response = ChatGPT_prompt(prompt, dir_tmp, dir_output)
+        # Отображение ответа в текстовом поле
+        text_var.set(f"ChatGPT: {response}")
