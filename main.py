@@ -8,12 +8,21 @@ import speech_recognition as sr
 import VA_lib
 
 # Настройка кодировки вывода для Python
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+#sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # Глобальные переменные
-recognized_text = ""
+debug_port = 9222
+dir_tmp = r"D:\Program_Data\Python\tmp"
+dir_output = r"D:\Program_Data\Python\output_files"
+file_path_chrome = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+file_path_prompt = r"D:\Program_Data\Python\prompt.txt"
 last_speech_time = time.time()
+recognized_text = ""
 timeout_duration = 2  # Время в секундах для ожидания молчания
+
+# Проверка и создание папки output_files
+if not os.path.exists(dir_output):
+        os.makedirs(dir_output)
 
 # Функция для обновления времени последней речи
 def update_last_speech_time():
@@ -43,6 +52,11 @@ programs = {
     "Rescold": os.path.join(os.getcwd(), 'VBS_files', 'VSCode.vbs')
 }
 
+# Запуск иконки в системном трее
+tray_thread = threading.Thread(target=VA_lib.create_tray_icon)
+tray_thread.daemon = True
+tray_thread.start()
+
 # Инициализация графического интерфейса
 root = tk.Tk()
 text_var = tk.StringVar()
@@ -62,10 +76,10 @@ thread.start()
 # Запускаем проверку молчания
 root.after(5000, VA_lib.check_silence, root, text_var, last_speech_time, timeout_duration)  # Начать проверку через 5 секунд
 
-# Запуск иконки в системном трее
-tray_thread = threading.Thread(target=VA_lib.create_tray_icon)
-tray_thread.daemon = True
-tray_thread.start()
+# Запуск функции обработки клавиши Control
+control_thread = threading.Thread(target=lambda: [VA_lib.handle_control_key(file_path_prompt, debug_port, dir_tmp, dir_output, text_var) for _ in iter(int, 1)])
+control_thread.daemon = True
+control_thread.start()
 
 # Запуск графического интерфейса
 root.mainloop()

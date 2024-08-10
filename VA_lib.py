@@ -1,5 +1,6 @@
 import keyboard
 import os
+import psutil
 import pyautogui
 import pychrome
 import pystray
@@ -16,6 +17,111 @@ from PIL import Image
 from pystray import MenuItem as item
 
 
+
+### Блок функций для работы с ChatGPT
+
+# Основная функция ChatGPT
+def ChatGPT_prompt(file_path_prompt, debug_port, dir_tmp, dir_output):
+    launch_chrome_with_debugging(debug_port)
+    prompt = read_prompt_from_file(file_path_prompt)
+    browser = pychrome.Browser(url="http://localhost:9222")    # Создаем клиент для подключения к браузеру
+    activate_chrome_window("Google Chrome")                    # Замените "Google Chrome" на уникальный заголовок вашего окна
+    block_input()                                              # Блокируем ввод
+    
+
+    try:
+        # Попробуйте найти вкладку ChatGPT
+        chatgpt_tab = find_chatgpt_tab(browser)
+        if chatgpt_tab is None:
+            print("Вкладка ChatGPT не найдена.")
+            return
+        else:
+            print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
+
+        activate_tab(chatgpt_tab)                              # Активируем вкладку
+        send_message(chatgpt_tab, prompt) # Пример отправки запроса и получения ответа
+
+        # Ожидание получения ответа
+        wait_for_response(chatgpt_tab)
+        html_content = get_last_message_html(chatgpt_tab)
+
+    finally:
+        unblock_input()
+
+    codes, text = extract_code_blocks(html_content)
+    text_file_path, code_file_paths = save_to_file([text], codes)
+    check_and_handle_files(dir_output)
+    processed_code_files = process_code_files(code_file_paths)
+    new_file_path = replace_code_in_text(text_file_path, code_file_paths, processed_code_files)
+
+    print(f"Обновленный текст сохранен в: {new_file_path}")
+    print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
+
+    clear_directory(dir_tmp)
+    print(f"Папка {dir_tmp} успешно очищена")
+
+# Считывание запроса с файла
+def read_prompt_from_file(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return file.read().strip()
+
+# Обработка нажатия клавиши Control
+def handle_control_key(file_path_prompt, debug_port, dir_tmp, dir_output, text_var):
+    ctrl_pressed = False  # Флаг для отслеживания состояния клавиши Ctrl
+
+    while True:
+        if keyboard.is_pressed('ctrl'):
+            if not ctrl_pressed:
+                # Если клавиша Ctrl нажата и ранее не была нажата
+                ctrl_pressed = True
+                print("Клавиша Control нажата")
+                time.sleep(1)
+        else:
+            # Если клавиша Ctrl отпущена и ранее была нажата
+            if ctrl_pressed:
+                time.sleep(1)
+                text = text_var.get()
+                print("Клавиша Control отпущена")
+                # Запись текста в prompt.txt
+                write_text_to_file(text, file_path_prompt)
+                time.sleep(1.8)
+                if os.path.exists(file_path_prompt) and os.path.getsize(file_path_prompt) > 0:
+                    # Запрос к ChatGPT
+                    ChatGPT_prompt(file_path_prompt, debug_port, dir_tmp, dir_output)
+                    clear_file(file_path_prompt)
+                ctrl_pressed = False  # Сбрасываем флаг
+            # Добавляем небольшую задержку, чтобы избежать излишней нагрузки на процессор
+            time.sleep(0.1)
+
+
+
+### Блок функций для работы с браузерами
+
+
+## Google Chrome
+
+# Проверка и запуск Google Chrome
+def launch_chrome_with_debugging(debug_port):
+    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    chrome_running = False
+
+    # Проверяем, запущен ли Chrome с необходимым портом
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        if proc.info['name'] == 'chrome.exe':
+            # Проверяем, есть ли параметр --remote-debugging-port в командной строке
+            if f"--remote-debugging-port={debug_port}" in proc.info['cmdline']:
+                chrome_running = True
+                print(f"Chrome уже запущен с параметром --remote-debugging-port={debug_port}.")
+                break
+
+    if not chrome_running:
+        # Если Chrome не запущен с нужным параметром, запускаем его
+        subprocess.Popen([chrome_path, f"--remote-debugging-port={debug_port}"])
+        print(f"Запускаю Chrome с параметром --remote-debugging-port={debug_port}.")
+        # Ждем некоторое время, чтобы убедиться, что Chrome запустился
+        time.sleep(3)
+
+# Поиск окна Chrome по заголовку и его активация
 def activate_chrome_window(window_title):
     # Находим окно Chrome по заголовку
     # Важно: для этого нужен заголовок окна, который должен быть уникальным
@@ -27,14 +133,17 @@ def activate_chrome_window(window_title):
         window[0].activate()
         time.sleep(0)
 
+# Выполнение JavaScript для получения текущего URL
 def get_tab_url(tab):
     # Выполняем JavaScript для получения текущего URL
     result = tab.call_method("Runtime.evaluate", expression="window.location.href")
     return result.get('result', {}).get('value', '')
 
+# Активация вкладки
 def activate_tab(tab):
     tab.call_method("Page.bringToFront")
 
+# Поиск вкладки ChatGPT
 def find_chatgpt_tab(browser):
     tabs = browser.list_tab()
     for tab in tabs:
@@ -47,6 +156,7 @@ def find_chatgpt_tab(browser):
             print(f"Ошибка при получении URL: {e}")
     return None
 
+# Отправка сообщения во вкладке ChatGPT
 def send_message(tab, message):
     # Выполняем JavaScript для отправки сообщения
     script = f"""
@@ -74,6 +184,7 @@ def send_message(tab, message):
     # Добавляем задержку в 1 секунду перед получением ответа
     time.sleep(1)
 
+# Ожидание ответа от ChatGPT
 def wait_for_response(tab):
     while True:
         # Проверяем наличие кнопки stop-button
@@ -120,8 +231,8 @@ def wait_for_response(tab):
             # Кнопка stop-button еще есть, ждем 1 секунду
             time.sleep(1)
 
+# Выполнение JavaScript для получения текста последнего сообщения
 def get_last_message_html(tab):
-    # Выполняем JavaScript для получения текста последнего сообщения
     script = """
     (function() {
         var messages = document.querySelectorAll('.markdown.prose');
@@ -134,6 +245,53 @@ def get_last_message_html(tab):
     result = tab.call_method("Runtime.evaluate", expression=script)
     return result.get('result', {}).get('value', '')
 
+
+
+### Блок функций для работы с файлами
+
+
+##CMD
+
+# Функция для запуска программы
+def run_program(command):
+    try:
+        if command.endswith('.vbs'):
+            # Используем cscript для запуска VBS файлов
+            subprocess.Popen(['cscript', command])
+        else:
+            subprocess.Popen(command)
+    except Exception as e:
+        print(f"Ошибка запуска программы: {e}")
+
+# Функция для открытия программ
+def execute_command(command, programs, text_var):
+    words = command.lower().split()
+    keywords = ["открыть", "запустить", "открой", "запусти", "открытие", "запуск",
+                "open", "start", "launch", "run"]
+    
+    programs_to_run = []
+
+    # Ищем ключевые слова и названия программ
+    for word in words:
+        if any(keyword in word for keyword in keywords):
+            for program in programs:
+                if program.lower() in command.lower():
+                    programs_to_run.append(programs[program])
+
+    # Запускаем все найденные программы
+    for program in programs_to_run:
+        run_program(program)
+        text_var.set(f"Запуск: {', '.join([k for k, v in programs.items() if v in programs_to_run])}")
+
+
+## Обработка файлов
+
+# Очистка файла
+def clear_file(file_path):
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write('')
+
+# Извлечение блоков кода из HTML
 def extract_code_blocks(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
     code_blocks = soup.find_all('pre')
@@ -143,6 +301,7 @@ def extract_code_blocks(html_content):
     
     return codes, text
 
+# Сохранение текстов и кодов в файлы
 def save_to_file(texts, codes, max_files=10):
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_dir = r"D:\Program_Data\Python\tmp"
@@ -174,6 +333,7 @@ def save_to_file(texts, codes, max_files=10):
     
     return text_filename, [os.path.join(output_dir, f"code_{current_time}_{i}.code") for i in range(1, len(codes) + 1)]
 
+# Замена кода в текстовом файле
 def replace_code_in_text(text_file_path, code_file_paths, processed_code_files):
     # Чтение содержимого исходного текстового файла
     with open(text_file_path, 'r', encoding='utf-8') as text_file:
@@ -201,6 +361,7 @@ def replace_code_in_text(text_file_path, code_file_paths, processed_code_files):
     
     return new_file_path
 
+# Обработка файлов кода присваивая им расширения
 def process_code_files(code_file_paths):
     extensions = {
         "python": ".py",
@@ -253,6 +414,7 @@ def process_code_files(code_file_paths):
 
     return processed_files
 
+# Генерация пути для нового файла
 def get_next_file_number(output_dir, prefix='out_text_', extension='.txt'):
     pattern = re.compile(rf'{re.escape(prefix)}\d+_{re.escape(extension)}$', re.IGNORECASE)
     files = [f for f in os.listdir(output_dir) if pattern.match(f)]
@@ -268,43 +430,7 @@ def get_next_file_number(output_dir, prefix='out_text_', extension='.txt'):
     new_filename = f"{prefix}{current_time}_{next_number}{extension}"
     return os.path.join(output_dir, new_filename)
 
-def run_devcon_command(command):
-    result = subprocess.run(command, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
-
-def get_device_by_id(device_id):
-    wmi = win32com.client.GetObject("winmgmts:")
-    devices = wmi.InstancesOf("Win32_PnPEntity")
-    for device in devices:
-        if device.PNPDeviceID.startswith(device_id):
-            return device
-    return None
-
-def disable_mouse():
-    try:
-        run_devcon_command(r'devcon disable "HID\VID_09DA&PID_1A63&REV_000<&MI_01"')
-        print(f"Device mouse bloody disabled")
-    except subprocess.CalledProcessError as e:
-        print(f"Error disabling device: {e.stderr}")
-
-def enable_mouse():
-    try:
-        run_devcon_command(r'devcon enable "HID\VID_09DA&PID_1A63&REV_000<&MI_01"')
-        print(f"Device mouse bloody enabled")
-    except subprocess.CalledProcessError as e:
-        print(f"Error enabling device: {e.stderr}")
-
-def block_input():
-    for i in range(150):
-        keyboard.block_key(i)
-
-    disable_mouse()
-
-def unblock_input():
-    for i in range(150):
-        keyboard.unblock_key(i)
-    
-    enable_mouse()
-
+# Очистка указанной директории
 def clear_directory(dir):
     for filename in os.listdir(dir):
         file_path = os.path.join(dir, filename)
@@ -313,6 +439,7 @@ def clear_directory(dir):
         except Exception as e:
             print(f"Ошибка при удалении {file_path}: {e}")
 
+# Замена содержимого файла
 def replace_file_content(file_path, content):
     temp_file_path = file_path + ".tmp"
     # Записываем данные в временный файл
@@ -322,6 +449,7 @@ def replace_file_content(file_path, content):
     # Переименовываем временный файл в исходный файл
     os.replace(temp_file_path, file_path)
 
+# Проверка и обработка файлов в указанной директории
 def check_and_handle_files(dir):
     tmp_dir = r"D:\Program_Data\Python\voice_tmp"
     tmp_voice_code_decision = os.path.join(tmp_dir, "tmp_voice_code_decision.txt")
@@ -401,83 +529,79 @@ def check_and_handle_files(dir):
             
             time.sleep(1)
 
-def read_prompt_from_file(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
-        return file.read().strip()
+# Функция для записи текста в файл
+def write_text_to_file(text, file_path):
+    if text.strip():  # Если текст не пустой после удаления пробелов и переводов строки
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(text)
+            print(f"Текст записан в файл {file_path}")
+        except IOError as e:
+            print(f"Ошибка записи в файл {file_path}: {e}")
+    else:
+        print("Пустой или некорректный текст, запись не выполнена.")
 
-def ChatGPT_prompt(prompt, dir_tmp, dir_output):
-    file_path_prompt = r"D:\Program_Data\Python\prompt.txt"
-    prompt = read_prompt_from_file(file_path_prompt)
-    dir_tmp = r"D:\Program_Data\Python\tmp"
-    dir_output = r"D:\Program_Data\Python\output_files"
-    browser = pychrome.Browser(url="http://localhost:9222")    # Создаем клиент для подключения к браузеру
-    activate_chrome_window("Google Chrome")                    # Замените "Google Chrome" на уникальный заголовок вашего окна
-    block_input()                                              # Блокируем ввод
-    
 
+
+### Блок функций для работы с системными устройствами
+
+
+## Devcon
+
+# Запуск Devcon
+def run_devcon_command(command):
+    result = subprocess.run(command, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+
+
+## Устройства
+
+# Получение устройства по ID
+def get_device_by_id(device_id):
+    wmi = win32com.client.GetObject("winmgmts:")
+    devices = wmi.InstancesOf("Win32_PnPEntity")
+    for device in devices:
+        if device.PNPDeviceID.startswith(device_id):
+            return device
+    return None
+
+# Отключение мыши
+def disable_mouse():
     try:
-        # Попробуйте найти вкладку ChatGPT
-        chatgpt_tab = find_chatgpt_tab(browser)
-        if chatgpt_tab is None:
-            print("Вкладка ChatGPT не найдена.")
-            return
-        else:
-            print(f"Вкладка ChatGPT найдена: ID {chatgpt_tab}")
+        run_devcon_command(r'devcon disable "HID\VID_09DA&PID_1A63&REV_000<&MI_01"')
+        print(f"Device mouse bloody disabled")
+    except subprocess.CalledProcessError as e:
+        print(f"Error disabling device: {e.stderr}")
 
-        activate_tab(chatgpt_tab)                              # Активируем вкладку
-        send_message(chatgpt_tab, prompt) # Пример отправки запроса и получения ответа
-
-        # Ожидание получения ответа
-        wait_for_response(chatgpt_tab)
-        html_content = get_last_message_html(chatgpt_tab)
-
-    finally:
-        unblock_input()
-
-    codes, text = extract_code_blocks(html_content)
-    text_file_path, code_file_paths = save_to_file([text], codes)
-    check_and_handle_files(dir_output)
-    processed_code_files = process_code_files(code_file_paths)
-    new_file_path = replace_code_in_text(text_file_path, code_file_paths, processed_code_files)
-
-    print(f"Обновленный текст сохранен в: {new_file_path}")
-    print(f"Обработанные файлы с кодом сохранены в: {processed_code_files}")
-
-    clear_directory(dir_tmp)
-    print(f"Папка {dir_tmp} успешно очищена")
-
-# Функция для запуска программы
-def run_program(command):
+# Включение мыши
+def enable_mouse():
     try:
-        if command.endswith('.vbs'):
-            # Используем cscript для запуска VBS файлов
-            subprocess.Popen(['cscript', command])
-        else:
-            subprocess.Popen(command)
-    except Exception as e:
-        print(f"Ошибка запуска программы: {e}")
+        run_devcon_command(r'devcon enable "HID\VID_09DA&PID_1A63&REV_000<&MI_01"')
+        print(f"Device mouse bloody enabled")
+    except subprocess.CalledProcessError as e:
+        print(f"Error enabling device: {e.stderr}")
 
-# Функция для открытия программ
-def execute_command(command, programs, text_var):
-    words = command.lower().split()
-    keywords = ["открыть", "запустить", "открой", "запусти", "открытие", "запуск",
-                "open", "start", "launch", "run"]
+# Блокировка ввода клавиатуры и мыши
+def block_input():
+    for i in range(150):
+        keyboard.block_key(i)
+
+    disable_mouse()
+
+# Разблокировка ввода клавиатуры и мыши
+def unblock_input():
+    for i in range(150):
+        keyboard.unblock_key(i)
     
-    programs_to_run = []
+    enable_mouse()
 
-    # Ищем ключевые слова и названия программ
-    for word in words:
-        if any(keyword in word for keyword in keywords):
-            for program in programs:
-                if program.lower() in command.lower():
-                    programs_to_run.append(programs[program])
 
-    # Запускаем все найденные программы
-    for program in programs_to_run:
-        run_program(program)
-        text_var.set(f"Запуск: {', '.join([k for k, v in programs.items() if v in programs_to_run])}")
 
-# Функция для распознавания речи
+### Блок функций для работы со звуком
+
+
+## Ввод голосом
+
+# Распознавание речи
 def recognize_speech(recognizer, microphone, text_var, execute_command, programs, update_last_speech_time):
     while True:
         try:
@@ -503,7 +627,7 @@ def recognize_speech(recognizer, microphone, text_var, execute_command, programs
         except sr.WaitTimeoutError:
             pass # Таймаут при ожидании начала речи
 
-# Функция для проверки молчания и очистки текста
+# Проверка молчания и очистка текста
 def check_silence(root, text_var, last_speech_time, timeout_duration):
     current_time = time.time()
     if current_time - last_speech_time > timeout_duration:
@@ -511,10 +635,17 @@ def check_silence(root, text_var, last_speech_time, timeout_duration):
         text_var.set("")
     root.after(4000, check_silence, root, text_var, last_speech_time, timeout_duration)  # Проверять каждые 4 секунды
 
-# Функция для создания иконки в системном трее
+
+
+### Блок функции для работы с графическим интерфейсом
+
+
+## Системный трей
+
+# Создание иконки в системном трее
 def create_tray_icon():
     # Загрузка изображения для иконки трея
-    icon_image = Image.open(os.path.join("items", "icon_tray.png"))
+    icon_image = Image.open(r"D:\Program_Data\Python\items\icon_tray.png")
 
     # Определяем действия для иконки трея
     def on_quit(icon, item):
@@ -525,7 +656,10 @@ def create_tray_icon():
     icon.menu = pystray.Menu(pystray.MenuItem("Quit", on_quit))
     icon.run()
 
-# Функция для инициализации графического интерфейса
+
+## Главное окно
+
+# Инициализация графического интерфейса
 def init_gui(root, text_var):
     root.attributes('-transparentcolor', 'white')  # Установка прозрачного цвета
     root.attributes('-topmost', True)  # Держит окно поверх всех других
@@ -541,25 +675,10 @@ def init_gui(root, text_var):
 
     return label
 
-# Функция для обновления текста в графическом окне
-def update_text(root, label, text_var):
+# Обновление текста в графическом окне
+def update_text(root, label):
     # Обновляем размер окна в зависимости от размера текста
     label.update_idletasks()
     new_width = label.winfo_reqwidth() + 20  # Добавляем отступы
     new_height = label.winfo_reqheight() + 20  # Добавляем отступы
     root.geometry(f"{new_width}x{new_height}+{root.winfo_screenwidth() - new_width}+{root.winfo_screenheight() - new_height}")
-
-# Функция для записи текста в файл
-def write_prompt_to_file(text):
-    with open('prompt.txt', 'w', encoding='utf-8') as file:
-        file.write(text)
-
-# Функция для обработки нажатия клавиши Control
-def handle_control_key(prompt, text_var, dir_tmp, dir_output):
-    if keyboard.is_pressed('ctrl'):
-        # Запись текста в prompt.txt
-        write_prompt_to_file(prompt)
-        # Запрос к ChatGPT
-        response = ChatGPT_prompt(prompt, dir_tmp, dir_output)
-        # Отображение ответа в текстовом поле
-        text_var.set(f"ChatGPT: {response}")
